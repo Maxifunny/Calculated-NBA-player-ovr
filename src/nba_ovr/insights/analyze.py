@@ -118,7 +118,9 @@ If the left number is clearly larger, the video game is leaning on points more t
 ## Caveats
 
 - Play-by-play defensive events are optional. If `raw_data/pbp/` is empty (stats.nba.com blocked), True OVR leans on BBRef STL/BLK per 100 and DBPM.
-- 2K ratings include reputation, potential, and recency. A “gap” is not automatically a mistake by 2K.
+- 2K ratings include reputation, **potential**, and recency. High-school lottery wings will look “overrated” here on purpose: the model only sees this season’s box score.
+- Backup centers with huge PER in 12–18 MPG used to spike True OVR; v1 shrinks composites by total minutes (`minutes_credibility`).
+- A “gap” is not automatically a mistake by 2K.
 - Name matching can miss two-way players and duplicate names. See `processed_data/unmatched_2k.csv`.
 """
 

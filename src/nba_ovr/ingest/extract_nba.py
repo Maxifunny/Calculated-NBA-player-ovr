@@ -21,7 +21,7 @@ def _configure_nba_api() -> None:
 def _call(endpoint_cls, **kwargs) -> pd.DataFrame:
     _configure_nba_api()
     last_error: Exception | None = None
-    for attempt in range(1, 4):
+    for attempt in range(1, 3):
         try:
             data = endpoint_cls(timeout=NBA_API_TIMEOUT, **kwargs)
             return data.get_data_frames()[0]
@@ -90,7 +90,19 @@ def try_fetch_nba_official() -> dict[str, pd.DataFrame]:
         "nba_bio": fetch_bio,
         "nba_game_log": fetch_game_log,
     }
-    for name, loader in mapping.items():
+    first_name = next(iter(mapping))
+    try:
+        frames[first_name] = mapping[first_name]()
+        logger.info("Loaded %s: %s rows", first_name, len(frames[first_name]))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "stats.nba.com unavailable (%s). Skipping remaining nba_api endpoints. "
+            "Basketball-Reference + 2K ratings still complete Stage 1.",
+            exc,
+        )
+        return {}
+
+    for name, loader in list(mapping.items())[1:]:
         try:
             frames[name] = loader()
             logger.info("Loaded %s: %s rows", name, len(frames[name]))

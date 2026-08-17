@@ -98,8 +98,25 @@ def scale_to_2k_range(raw: np.ndarray) -> np.ndarray:
     return np.rint(overall).astype(int)
 
 
+def _minutes_credibility(frame: pd.DataFrame) -> pd.Series:
+    """Shrink tiny-minute PER spikes toward league average.
+
+    Backup centers often lead the league in PER/stocks per 100. 2K (and
+    humans) still rate them as role players because they do not run an offense.
+    Credibility 1.0 ≈ a full-time starter (~36 MPG * 70 GP).
+    """
+    gp = pd.to_numeric(frame["gp"], errors="coerce").fillna(0) if "gp" in frame.columns else pd.Series(0.0, index=frame.index)
+    mpg = pd.to_numeric(frame["mpg"], errors="coerce").fillna(0) if "mpg" in frame.columns else pd.Series(0.0, index=frame.index)
+    minutes = gp * mpg
+    prior = 500.0  # ~18 mpg * 28 games of average evidence
+    return (minutes / (minutes + prior)).clip(lower=0.40, upper=1.0)
+
+
 def compute_true_ovr(frame: pd.DataFrame) -> pd.DataFrame:
     scored = composite_score(frame)
+    cred = _minutes_credibility(scored)
+    scored["minutes_credibility"] = cred
+    scored["true_ovr_raw"] = 0.5 + (scored["true_ovr_raw"] - 0.5) * cred
     scored["true_ovr"] = scale_to_2k_range(scored["true_ovr_raw"].to_numpy())
     scored["ovr_gap"] = scored["ovr_2k"] - scored["true_ovr"]
     scored["overrated_flag"] = scored["ovr_gap"] >= 5

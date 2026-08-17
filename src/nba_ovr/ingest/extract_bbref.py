@@ -33,6 +33,7 @@ def scrape_bbref_table(stat_type: str) -> pd.DataFrame:
     url = _table_url(stat_type)
     logger.info("Scraping %s", url)
     response = request_with_retry(url, timeout=60)
+    response.encoding = "utf-8"
     soup = BeautifulSoup(response.text, "lxml")
 
     table = soup.find("table", id=stat_type)
@@ -49,24 +50,17 @@ def scrape_bbref_table(stat_type: str) -> pd.DataFrame:
         for col in frame.columns
     ]
 
-    player_ids: list[str | None] = []
     body = table.find("tbody")
     rows = body.find_all("tr") if body else []
-    for row in rows:
-        if "thead" in row.get("class", []) or row.get("class") == ["thead"]:
-            player_ids.append(None)
-            continue
-        anchor = row.find("a", href=_PLAYER_HREF)
-        player_ids.append(_parse_player_id(anchor["href"]) if anchor else None)
 
     # Header repeats inside the body — drop those before aligning ids.
     if "Player" in frame.columns:
         frame = frame[frame["Player"].astype(str) != "Player"].copy()
+        frame = frame[~frame["Player"].astype(str).str.contains("League Average", na=False)].copy()
     if "Rk" in frame.columns:
         frame = frame[frame["Rk"].astype(str) != "Rk"].copy()
 
-    # read_html keeps thead-repeat rows that BeautifulSoup tbody also contains.
-    # Rebuild ids from remaining tbody rows that are not section headers.
+    # Rebuild ids from remaining tbody rows that are actual players.
     clean_ids: list[str | None] = []
     for row in rows:
         classes = row.get("class") or []
@@ -74,10 +68,12 @@ def scrape_bbref_table(stat_type: str) -> pd.DataFrame:
             continue
         if row.find("th", {"scope": "col"}):
             continue
-        anchor = row.find("a", href=_PLAYER_HREF)
         if not row.find("td"):
             continue
-        clean_ids.append(_parse_player_id(anchor["href"]) if anchor else None)
+        anchor = row.find("a", href=_PLAYER_HREF)
+        if not anchor:
+            continue
+        clean_ids.append(_parse_player_id(anchor["href"]))
 
     if len(clean_ids) == len(frame):
         frame.insert(0, "bbref_id", clean_ids)
@@ -108,7 +104,8 @@ def collapse_traded_players(frame: pd.DataFrame) -> pd.DataFrame:
                 return tot.iloc[0]
         if games_col and games_col in group.columns:
             numeric_g = pd.to_numeric(group[games_col], errors="coerce")
-            return group.loc[numeric_g.idxmax()]
+            if numeric_g.notna().any():
+                return group.loc[numeric_g.idxmax()]
         return group.iloc[0]
 
     id_col = "bbref_id" if frame["bbref_id"].notna().any() else "Player"

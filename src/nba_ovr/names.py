@@ -23,7 +23,8 @@ def normalize_name(name: str | None) -> str:
     """Lowercase, strip accents/punctuation/generational suffixes."""
     if not name:
         return ""
-    decomposed = unicodedata.normalize("NFKD", str(name))
+    patched = str(name).replace("ё", "e").replace("Ё", "E")
+    decomposed = unicodedata.normalize("NFKD", patched)
     ascii_only = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     cleaned = ascii_only.lower().replace(".", "")
     cleaned = _NON_ALNUM.sub(" ", cleaned)

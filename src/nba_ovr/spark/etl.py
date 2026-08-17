@@ -227,11 +227,11 @@ def attach_2k_ratings(spark: SparkSession, players, ratings):
     rows = []
     unmatched = []
     for rec in player_pdf.itertuples(index=False):
-        key = rec.name_key or normalize_name(rec.player_name)
+        key = normalize_name(rec.player_name)
         match_key = key if key in lookup else None
         score = 100.0 if match_key else 0.0
         if match_key is None:
-            fuzzy = best_name_match(key, candidate_keys, score_cutoff=90)
+            fuzzy = best_name_match(key, candidate_keys, score_cutoff=88)
             if fuzzy:
                 match_key, score = fuzzy
         if match_key is None:
@@ -293,6 +293,17 @@ def add_helper_metrics(players):
     stocks = F.coalesce(stl100, F.lit(0.0)) + F.coalesce(blk100, F.lit(0.0))
     usage_efficiency = F.coalesce(ts, F.lit(0.0)) * F.coalesce(usg, F.lit(0.0))
 
+    pos_col = F.col("pos") if "pos" in players.columns else F.lit(None).cast("string")
+    pos_2k = F.col("position_2k") if "position_2k" in players.columns else F.lit(None).cast("string")
+    team_col = None
+    for candidate in ("team_abbreviation", "tm", "team"):
+        if candidate in players.columns:
+            team_col = F.col(candidate)
+            break
+    if team_col is None:
+        team_col = F.lit(None).cast("string")
+    team_2k = F.col("team_2k") if "team_2k" in players.columns else F.lit(None).cast("string")
+
     out = (
         players.withColumn("per", per)
         .withColumn("ts_pct", ts)
@@ -311,8 +322,8 @@ def add_helper_metrics(players):
         .withColumn("mpg", mpg)
         .withColumn("stocks_per_100", stocks)
         .withColumn("usage_efficiency", usage_efficiency)
-        .withColumn("position", F.coalesce(F.col("pos") if "pos" in players.columns else F.lit(None), F.col("position_2k") if "position_2k" in players.columns else F.lit(None)))
-        .withColumn("team_abbreviation", F.coalesce(F.col("tm") if "tm" in players.columns else F.lit(None), F.col("team_2k") if "team_2k" in players.columns else F.lit(None)))
+        .withColumn("position", F.coalesce(pos_col, pos_2k))
+        .withColumn("team_abbreviation", F.coalesce(team_col, team_2k))
         .withColumn("season", F.lit(SEASON))
     )
 
@@ -320,7 +331,7 @@ def add_helper_metrics(players):
         out = out.withColumn("def_events_per_100", F.lit(None).cast("double"))
 
     # Percentile w obrębie sezonu — Window to klasyka Sparka, warta zrozumienia.
-    window = Window.orderBy(F.col("per").asc_nulls_first())
+    window = Window.partitionBy("season").orderBy(F.col("per").asc_nulls_first())
     out = out.withColumn("per_percentile", F.percent_rank().over(window))
     return out
 

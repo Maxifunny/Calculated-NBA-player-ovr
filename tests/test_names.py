@@ -6,6 +6,7 @@ def test_normalize_strips_accents_and_suffixes():
     assert normalize_name("Luka Dončić Jr.") == "luka doncic"
     assert normalize_name("P.J. Washington") == "pj washington"
     assert normalize_name("Karl-Anthony Towns") == "karl anthony towns"
+    assert normalize_name("Egor Dёmin") == "egor demin"
 
 
 def test_fuzzy_match_handles_spelling_variants():
