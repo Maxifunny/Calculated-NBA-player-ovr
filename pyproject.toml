@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nba-true-ovr"
+version = "0.1.0"
+description = "ETL + analytics pipeline comparing NBA 2K OVR with a stats-based True OVR"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Maxifunny" }]
+dependencies = [
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "scikit-learn>=1.5",
+  "nba_api>=1.6",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.0",
+  "requests>=2.32",
+  "sqlalchemy>=2.0",
+  "psycopg2-binary>=2.9",
+  "matplotlib>=3.9",
+  "seaborn>=0.13",
+  "python-dotenv>=1.0",
+  "rapidfuzz>=3.9",
+  "pyarrow>=16.0",
+  "pyspark>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+nba-ovr = "nba_ovr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

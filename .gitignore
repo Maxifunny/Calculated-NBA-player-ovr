@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Pipeline outputs (keep directory placeholders)
+raw_data/**
+!raw_data/.gitkeep
+processed_data/**
+!processed_data/.gitkeep
+!processed_data/.gitkeep
+warehouse/*.sqlite
+warehouse/*.sqlite-journal
+spark-warehouse/
+metastore_db/
+derby.log
+.python-version
+*.crc
+_SUCCESS
+.DS_Store
