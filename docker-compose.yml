@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: nba
+      POSTGRES_PASSWORD: nba
+      POSTGRES_DB: nba_ovr
+    ports:
+      - "5432:5432"
+    volumes:
+      - nba_ovr_pg:/var/lib/postgresql/data
+
+volumes:
+  nba_ovr_pg:
