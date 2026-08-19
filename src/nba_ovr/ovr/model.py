@@ -255,7 +255,13 @@ def run_ovr(*, model: str = "v1", top_n: int = 10) -> pd.DataFrame:
             "matched_2k": int(result["ovr_2k"].notna().sum()) if "ovr_2k" in result.columns else 0,
             "weights": OVR_WEIGHTS,
         }
-        (REPORTS_DIR / "ovr_model_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        # Stage 5 reads legacy `processed_data/true_ovr.csv`.
+        # When --model all is requested, we still write legacy artifacts from v1,
+        # so keep the summary aligned with v1 to avoid confusing markdown.
+        if model != "all" or model_name == "v1":
+            (REPORTS_DIR / "ovr_model_summary.json").write_text(
+                json.dumps(summary, indent=2), encoding="utf-8"
+            )
 
     _write_model_comparison_md(by_model=by_model, top_n=top_n)
 
