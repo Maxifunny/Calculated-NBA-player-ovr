@@ -493,7 +493,13 @@ def run_etl() -> None:
         slim = modeled.select(*existing)
 
         write_outputs(slim)
-        flatten_spark_csv(PROCESSED_DIR / "players_clean_spark.csv")
+        # Gdy Sparkowy zapis CSV padnie, write_outputs może zrobić fallback do Pandas
+        # i zapisać od razu `processed_data/players_clean.csv`.
+        # Wtedy katalog `players_clean_spark.csv` może nie istnieć albo być pusty.
+        try:
+            flatten_spark_csv(PROCESSED_DIR / "players_clean_spark.csv")
+        except FileNotFoundError:
+            pass
 
         summary = {
             "season": SEASON,
