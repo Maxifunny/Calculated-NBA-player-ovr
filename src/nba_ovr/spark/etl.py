@@ -398,15 +398,25 @@ def write_outputs(players) -> None:
         import shutil
 
         shutil.rmtree(spark_csv_dir, ignore_errors=True)
-    (
-        players.coalesce(1)
-        .write.mode("overwrite")
-        .option("header", True)
-        .csv(str(spark_csv_dir))
-    )
+    csv_ok = False
+    try:
+        (
+            players.coalesce(1)
+            .write.mode("overwrite")
+            .option("header", True)
+            .csv(str(spark_csv_dir))
+        )
+        csv_ok = True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Zapis CSV przez Spark się nie udał (%s). Fallback do Pandas.", exc)
+        # Windows fallback: omijamy Hadoop NativeIO (winutils/hadoop.dll).
+        pandas_out = PROCESSED_DIR / "players_clean.csv"
+        players.toPandas().to_csv(pandas_out, index=False)
+        logger.info("Zapisano CSV przez Pandas → %s", pandas_out)
     if parquet_ok:
         logger.info("Zapisano Parquet → %s", parquet_dir)
-    logger.info("Zapisano CSV Spark → %s", spark_csv_dir)
+    if csv_ok:
+        logger.info("Zapisano CSV Spark → %s", spark_csv_dir)
 
 
 def flatten_spark_csv(csv_dir: Path, dest_name: str = "players_clean.csv") -> Path:
