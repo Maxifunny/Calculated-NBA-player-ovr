@@ -217,30 +217,60 @@ def _build_2k_lookup(ratings_pdf) -> dict[str, dict]:
 
 
 def attach_2k_ratings(spark: SparkSession, players, ratings):
-    ratings_pdf = ratings.select(
-        "player_name", "overall", "team", "position", "slug"
-    ).toPandas()
+    # Use Pandas for the fuzzy join. On this pipeline scale (≈400 players),
+    # it is fast and avoids a brittle Spark↔Python matching path.
+    ratings_pdf = ratings.select("player_name", "overall", "team", "position", "slug").toPandas()
     lookup = _build_2k_lookup(ratings_pdf)
     candidate_keys = list(lookup.keys())
 
-    player_pdf = players.select("player_id", "player_name", "name_key").toPandas()
+    player_pdf = players.toPandas()
+
+    # Be defensive: if Stage 1 wasn't run (or wrong file is present),
+    # required columns may be missing (common on fresh Windows setups).
+    if "player_id" not in player_pdf.columns:
+        raise RuntimeError(
+            "Brak kolumny 'player_id' w players DataFrame. "
+            "Upewnij się, że uruchomiłeś Etap 1: `python -m nba_ovr ingest --skip-pbp` "
+            "i masz plik raw_data/players_raw.csv."
+        )
+
+    # Stage 1 should provide player_name + name_key, but if not, compute it.
+    if "player_name" not in player_pdf.columns:
+        alt = next((c for c in ("Player", "PLAYER_NAME", "player") if c in player_pdf.columns), None)
+        if alt:
+            player_pdf["player_name"] = player_pdf[alt]
+        else:
+            raise RuntimeError(
+                "Brak kolumny 'player_name' w players DataFrame. "
+                "Sprawdź poprawność pliku raw_data/players_raw.csv."
+            )
+    if "name_key" not in player_pdf.columns:
+        player_pdf["name_key"] = player_pdf["player_name"].map(normalize_name)
+
     rows = []
     unmatched = []
-    for rec in player_pdf.itertuples(index=False):
-        key = normalize_name(rec.player_name)
+    for rec in player_pdf.to_dict(orient="records"):
+        player_id = int(rec["player_id"])
+        player_name = rec.get("player_name") or ""
+        key = rec.get("name_key") or normalize_name(player_name)
+
         match_key = key if key in lookup else None
         score = 100.0 if match_key else 0.0
         if match_key is None:
             fuzzy = best_name_match(key, candidate_keys, score_cutoff=88)
             if fuzzy:
                 match_key, score = fuzzy
+
         if match_key is None:
-            unmatched.append({"player_id": rec.player_id, "player_name": rec.player_name, "name_key": key})
+            unmatched.append(
+                {"player_id": player_id, "player_name": player_name, "name_key": key}
+            )
             continue
+
         payload = lookup[match_key]
         rows.append(
             {
-                "player_id": rec.player_id,
+                "player_id": player_id,
                 "ovr_2k": payload["ovr_2k"],
                 "team_2k": payload["team_2k"],
                 "position_2k": payload["position_2k"],
