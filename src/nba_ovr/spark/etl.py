@@ -372,18 +372,33 @@ def write_outputs(players) -> None:
     spark_csv_dir = PROCESSED_DIR / "players_clean_spark.csv"
 
     # coalesce(1) = jeden plik CSV, wygodny do wglądu. Na terabajtach NIE rób tego.
-    (
-        players.write.mode("overwrite")
-        .option("compression", "snappy")
-        .parquet(str(parquet_dir))
-    )
+    #
+    # Na Windowsie zapis Parquet czasem wywala się z powodów środowiskowych
+    # (uprawnienia / file-lock / kompatybilność). Nie blokujemy ETL:
+    # jeśli Parquet nie zapisze się, i tak zapisujemy CSV, żeby Etap 3–5 poszły.
+    if parquet_dir.exists():
+        import shutil
+
+        shutil.rmtree(parquet_dir, ignore_errors=True)
+
+    parquet_ok = False
+    try:
+        (
+            players.write.mode("overwrite")
+            .option("compression", "snappy")
+            .parquet(str(parquet_dir))
+        )
+        parquet_ok = True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Zapis Parquet się nie udał (%s). Lecimy z CSV.", exc)
     (
         players.coalesce(1)
         .write.mode("overwrite")
         .option("header", True)
         .csv(str(spark_csv_dir))
     )
-    logger.info("Zapisano Parquet → %s", parquet_dir)
+    if parquet_ok:
+        logger.info("Zapisano Parquet → %s", parquet_dir)
     logger.info("Zapisano CSV Spark → %s", spark_csv_dir)
 
 
