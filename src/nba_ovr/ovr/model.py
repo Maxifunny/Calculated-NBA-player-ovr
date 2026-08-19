@@ -16,6 +16,8 @@ from sklearn.preprocessing import RobustScaler
 
 from nba_ovr.settings import OVR_SCALE_MAX, OVR_SCALE_MIN, OVR_WEIGHTS, PROCESSED_DIR, REPORTS_DIR
 from nba_ovr.warehouse.load import read_mart
+from nba_ovr.ovr.models.registry import resolve_model_selection
+from nba_ovr.ovr.models.utils import position_group
 
 logger = logging.getLogger(__name__)
 
@@ -124,29 +126,131 @@ def compute_true_ovr(frame: pd.DataFrame) -> pd.DataFrame:
     return scored
 
 
-def run_ovr() -> pd.DataFrame:
+def _top_by_gap(frame: pd.DataFrame, *, n: int, ascending: bool) -> pd.DataFrame:
+    cols = [c for c in ["player_name", "team_abbreviation", "position", "gp", "pts", "per", "ovr_2k", "true_ovr", "ovr_gap"] if c in frame.columns]
+    return frame.sort_values("ovr_gap", ascending=ascending).head(n)[cols].copy()
+
+
+def _center_pf_underrated_dominance(result: pd.DataFrame, top_underrated: pd.DataFrame, *, q75: float = 0.75) -> dict:
+    if result.empty or "true_ovr" not in result.columns or "position" not in result.columns:
+        return {}
+    q = float(np.nanquantile(result["true_ovr"], q75)) if result["true_ovr"].notna().any() else np.nan
+    pos_grp = position_group(result["position"])
+    res2 = result[["player_name", "true_ovr"]].copy()
+    res2["pos_grp"] = pos_grp.values
+    merged = top_underrated.merge(res2, on="player_name", how="left", suffixes=("", "_r"))
+    center_mask = merged["pos_grp"] == "center_pf"
+    high_center_mask = center_mask & (merged["true_ovr"] >= q)
+    total = max(len(merged), 1)
+    return {
+        "q75_true_ovr": q,
+        "center_pf_count": int(center_mask.sum()),
+        "high_center_pf_count": int(high_center_mask.sum()),
+        "center_pf_share": center_mask.sum() / total,
+        "high_center_pf_share": high_center_mask.sum() / total,
+    }
+
+
+def _write_model_top_csvs(*, result: pd.DataFrame, model_name: str, top_n: int) -> None:
+    top_over = _top_by_gap(result, n=top_n, ascending=False)
+    top_under = _top_by_gap(result, n=top_n, ascending=True)
+    top_over.to_csv(REPORTS_DIR / f"model_{model_name}_top_overrated.csv", index=False)
+    top_under.to_csv(REPORTS_DIR / f"model_{model_name}_top_underrated.csv", index=False)
+
+
+def _write_model_comparison_md(*, by_model: dict[str, pd.DataFrame], top_n: int) -> None:
+    lines: list[str] = []
+    lines.append("# True OVR model comparison\n\n")
+    lines.append(f"Artifacts: `reports/model_<name>_top_overrated.csv`, `reports/model_<name>_top_underrated.csv`.\n\n")
+
+    for model_name, result in sorted(by_model.items()):
+        if result.empty:
+            lines.append(f"## {model_name}\n- no data\n\n")
+            continue
+        mn, mx = int(result["true_ovr"].min()), int(result["true_ovr"].max())
+        lines.append(f"## {model_name}\n- true_ovr range: {mn}..{mx}\n")
+        top_under = _top_by_gap(result, n=top_n, ascending=True)
+        metrics = _center_pf_underrated_dominance(result, top_under)
+        if metrics:
+            lines.append(
+                f"- center_pf share among top underrated: {metrics['center_pf_share']:.0%} "
+                f"({metrics['center_pf_count']}/{top_n})\n"
+            )
+            lines.append(
+                f"- high center_pf share (true_ovr ≥ p75={metrics['q75_true_ovr']:.1f}): "
+                f"{metrics['high_center_pf_share']:.0%} "
+                f"({metrics['high_center_pf_count']}/{top_n})\n"
+            )
+
+        if model_name == "v1":
+            lines.append("- Why it persists: v1 shrinks the whole composite by minutes credibility; centers can still rank high via defense/efficiency.\n\n")
+        elif model_name == "v2":
+            lines.append("- Why it persists: v2 normalizes PER within coarse roles and shrinks only PER, reducing volatility without removing center advantage.\n\n")
+        elif model_name == "v3":
+            lines.append("- Why it persists: v3 blends offense/defense with a center-leaning defense weight, keeping two-way bigs visible.\n\n")
+
+    (REPORTS_DIR / "model_comparison.md").write_text("".join(lines), encoding="utf-8")
+
+
+def run_ovr(*, model: str = "v1", top_n: int = 10) -> pd.DataFrame:
+    """
+    Stage 4 orchestrator.
+
+    CLI:
+      python -m nba_ovr ovr --model v1|v2|v3|all
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     mart = read_mart()
-    if mart.empty:
-        raise RuntimeError("player_ovr_mart is empty — run stages 1-3 first.")
-    result = compute_true_ovr(mart)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    out_csv = PROCESSED_DIR / "true_ovr.csv"
-    result.to_csv(out_csv, index=False)
-    summary = {
-        "players": int(len(result)),
-        "true_ovr_min": int(result["true_ovr"].min()),
-        "true_ovr_max": int(result["true_ovr"].max()),
-        "true_ovr_mean": float(result["true_ovr"].mean()),
-        "matched_2k": int(result["ovr_2k"].notna().sum()),
-        "weights": OVR_WEIGHTS,
-    }
-    (REPORTS_DIR / "ovr_model_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    logger.info("Stage 4 complete: %s", summary)
-    preview_cols = [c for c in ["player_name", "pts", "per", "ovr_2k", "true_ovr", "ovr_gap"] if c in result.columns]
-    logger.info("\n%s", result.sort_values("true_ovr", ascending=False)[preview_cols].head(10).to_string(index=False))
-    return result
+
+    if mart.empty:
+        logger.warning("player_ovr_mart is empty — generated empty comparison artifacts.")
+        (REPORTS_DIR / "model_comparison.md").write_text(
+            "# True OVR model comparison\n\nNo data found in `player_ovr_mart` — run stages 1-3 first.\n",
+            encoding="utf-8",
+        )
+        for name in ("v1", "v2", "v3"):
+            pd.DataFrame().to_csv(REPORTS_DIR / f"model_{name}_top_overrated.csv", index=False)
+            pd.DataFrame().to_csv(REPORTS_DIR / f"model_{name}_top_underrated.csv", index=False)
+        return pd.DataFrame()
+
+    selected_models = resolve_model_selection(model)
+    by_model: dict[str, pd.DataFrame] = {}
+
+    for m in selected_models:
+        model_name = getattr(m, "model_name", model)
+        logger.info("Running True OVR %s", model_name)
+        result = compute_true_ovr(mart) if model_name == "v1" else m.predict(mart)
+        by_model[model_name] = result
+
+        # Persist per-model CSV (and overwrite the legacy one only for single-model runs).
+        result.to_csv(PROCESSED_DIR / f"true_ovr_{model_name}.csv", index=False)
+        if model != "all" and model_name == model:
+            result.to_csv(PROCESSED_DIR / "true_ovr.csv", index=False)
+
+        _write_model_top_csvs(result=result, model_name=model_name, top_n=top_n)
+
+        # Keep compatibility file for Stage 5.
+        summary = {
+            "model_name": model_name,
+            "players": int(len(result)),
+            "true_ovr_min": int(result["true_ovr"].min()),
+            "true_ovr_max": int(result["true_ovr"].max()),
+            "true_ovr_mean": float(result["true_ovr"].mean()),
+            "matched_2k": int(result["ovr_2k"].notna().sum()) if "ovr_2k" in result.columns else 0,
+            "weights": OVR_WEIGHTS,
+        }
+        (REPORTS_DIR / "ovr_model_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    _write_model_comparison_md(by_model=by_model, top_n=top_n)
+
+    if model == "all":
+        # Stage 5 still expects the legacy `processed_data/true_ovr.csv`.
+        if "v1" in by_model:
+            by_model["v1"].to_csv(PROCESSED_DIR / "true_ovr.csv", index=False)
+        return pd.concat(list(by_model.values()), ignore_index=True)
+    return by_model[selected_models[0].model_name]
 
 
 if __name__ == "__main__":
