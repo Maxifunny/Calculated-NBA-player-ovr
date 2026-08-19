@@ -200,9 +200,23 @@ def run_ovr(*, model: str = "v1", top_n: int = 10) -> pd.DataFrame:
       python -m nba_ovr ovr --model v1|v2|v3|all
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    mart = read_mart()
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        mart = read_mart()
+    except Exception as e:
+        logger.warning("Failed to load `player_ovr_mart` (%s) — generating empty artifacts.", e)
+        (REPORTS_DIR / "model_comparison.md").write_text(
+            "# True OVR model comparison\n\n"
+            "No data found in `player_ovr_mart` (failed to read from warehouse). "
+            "Run stages 1-3 first.\n",
+            encoding="utf-8",
+        )
+        for name in ("v1", "v2", "v3"):
+            pd.DataFrame().to_csv(REPORTS_DIR / f"model_{name}_top_overrated.csv", index=False)
+            pd.DataFrame().to_csv(REPORTS_DIR / f"model_{name}_top_underrated.csv", index=False)
+        return pd.DataFrame()
 
     if mart.empty:
         logger.warning("player_ovr_mart is empty — generated empty comparison artifacts.")
