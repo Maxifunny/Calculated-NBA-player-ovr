@@ -391,6 +391,13 @@ def write_outputs(players) -> None:
         parquet_ok = True
     except Exception as exc:  # noqa: BLE001
         logger.warning("Zapis Parquet się nie udał (%s). Lecimy z CSV.", exc)
+
+    # Windows: poprzedni run może zostawić częściowo utworzony katalog CSV
+    # (często z blokadami). Czyścimy zanim zapisujemy ponownie.
+    if spark_csv_dir.exists():
+        import shutil
+
+        shutil.rmtree(spark_csv_dir, ignore_errors=True)
     (
         players.coalesce(1)
         .write.mode("overwrite")
