@@ -28,6 +28,9 @@ MIN_MINUTES_PER_GAME = float(os.getenv("MIN_MPG", "10"))
 PBP_MAX_GAMES = int(os.getenv("PBP_MAX_GAMES", "80"))
 PBP_SLEEP_SECONDS = float(os.getenv("PBP_SLEEP_SECONDS", "0.7"))
 NBA_API_TIMEOUT = int(os.getenv("NBA_API_TIMEOUT", "60"))
+PBP_PROVIDER = os.getenv("PBP_PROVIDER", "nba_api").strip().lower()
+PBP_MAX_FAILURES = int(os.getenv("PBP_MAX_FAILURES", "8"))
+PBP_RETRY_ATTEMPTS = int(os.getenv("PBP_RETRY_ATTEMPTS", "2"))
 
 RAW_DIR = ROOT / "raw_data"
 PROCESSED_DIR = ROOT / "processed_data"

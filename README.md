@@ -50,6 +50,8 @@ cp .env.example .env
 ```bash
 # 1. Surowe CSV w raw_data/
 python3 -m nba_ovr ingest --skip-pbp
+# lub (z PBP):
+python3 -m nba_ovr ingest --pbp-provider nba_api --pbp-max-failures 12 --pbp-sleep 1.2 --nba-api-timeout 90
 
 # 2. Spark: filtr GP/MPG, join 2K, zapis Parquet
 python3 -m nba_ovr spark
@@ -65,6 +67,12 @@ python3 -m nba_ovr insights
 ```
 
 Albo wszystko: `python3 -m nba_ovr all --skip-pbp` / `make all`.
+
+Wyłączenie PBP bez `--skip-pbp`:
+
+```bash
+python3 -m nba_ovr ingest --pbp-provider none
+```
 
 PostgreSQL:
 

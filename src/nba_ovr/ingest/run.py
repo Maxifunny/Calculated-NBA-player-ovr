@@ -15,7 +15,7 @@ from nba_ovr.ingest.extract_nba import try_fetch_nba_official
 from nba_ovr.ingest.extract_pbp import extract_play_by_play
 from nba_ovr.ingest.http_utils import write_csv
 from nba_ovr.names import normalize_name
-from nba_ovr.settings import RAW_DIR, SEASON
+from nba_ovr.settings import NBA_API_TIMEOUT, PBP_MAX_FAILURES, PBP_PROVIDER, PBP_RETRY_ATTEMPTS, PBP_SLEEP_SECONDS, RAW_DIR, SEASON
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,15 @@ def build_player_index(bbref: dict[str, pd.DataFrame], nba: dict[str, pd.DataFra
     return merged
 
 
-def run_ingest(*, skip_pbp: bool = False) -> None:
+def run_ingest(
+    *,
+    skip_pbp: bool = False,
+    pbp_provider: str = PBP_PROVIDER,
+    pbp_max_failures: int = PBP_MAX_FAILURES,
+    pbp_sleep: float = PBP_SLEEP_SECONDS,
+    pbp_timeout: int = NBA_API_TIMEOUT,
+    pbp_retry_attempts: int = PBP_RETRY_ATTEMPTS,
+) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -106,7 +114,7 @@ def run_ingest(*, skip_pbp: bool = False) -> None:
     for name, frame in nba.items():
         write_csv(RAW_DIR / f"{name}.csv", frame)
 
-    if not skip_pbp:
+    if not skip_pbp and pbp_provider != "none":
         game_log = nba.get("nba_game_log")
         if game_log is None:
             logger.warning(
@@ -114,7 +122,15 @@ def run_ingest(*, skip_pbp: bool = False) -> None:
                 "Run ingest on a network that can reach stats.nba.com to fill raw_data/pbp/."
             )
         else:
-            extract_play_by_play(game_log)
+            extract_play_by_play(
+                game_log,
+                max_failures=pbp_max_failures,
+                sleep_seconds=pbp_sleep,
+                timeout=pbp_timeout,
+                retry_attempts=pbp_retry_attempts,
+            )
+    elif pbp_provider == "none":
+        logger.info("PBP provider set to 'none' — skipping play-by-play extraction.")
 
     ratings = fetch_2k_ratings()
     write_csv(RAW_DIR / "nba_2k_ratings.csv", ratings)

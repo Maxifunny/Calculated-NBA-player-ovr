@@ -1,0 +1,46 @@
+{
+  "leaguegamelog": {
+    "status": "failed",
+    "error": {
+      "type": "ReadTimeout",
+      "message": "HTTPSConnectionPool(host='stats.nba.com', port=443): Read timed out. (read timeout=30)"
+    },
+    "selected_game_ids": [
+      "0022500001",
+      "0022500002",
+      "0022500003"
+    ]
+  },
+  "pbp_results": [
+    {
+      "game_id": "0022500001",
+      "status": "failed",
+      "elapsed_s": 30.148,
+      "events": 0,
+      "exception_type": "ReadTimeout",
+      "exception_message": "HTTPSConnectionPool(host='stats.nba.com', port=443): Read timed out. (read timeout=30)",
+      "http_status": null,
+      "response_text": null
+    },
+    {
+      "game_id": "0022500002",
+      "status": "failed",
+      "elapsed_s": 30.137,
+      "events": 0,
+      "exception_type": "ReadTimeout",
+      "exception_message": "HTTPSConnectionPool(host='stats.nba.com', port=443): Read timed out. (read timeout=30)",
+      "http_status": null,
+      "response_text": null
+    },
+    {
+      "game_id": "0022500003",
+      "status": "failed",
+      "elapsed_s": 30.129,
+      "events": 0,
+      "exception_type": "ReadTimeout",
+      "exception_message": "HTTPSConnectionPool(host='stats.nba.com', port=443): Read timed out. (read timeout=30)",
+      "http_status": null,
+      "response_text": null
+    }
+  ]
+}
