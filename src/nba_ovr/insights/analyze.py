@@ -79,7 +79,13 @@ def _corr_line(frame: pd.DataFrame, y: str) -> str:
     return f"{subset['pts'].corr(subset[y]):.3f}"
 
 
-def _markdown(frame: pd.DataFrame, overrated: pd.DataFrame, underrated: pd.DataFrame) -> str:
+def _markdown(
+    frame: pd.DataFrame,
+    overrated: pd.DataFrame,
+    underrated: pd.DataFrame,
+    *,
+    model_name: str,
+) -> str:
     corr_2k = _corr_line(frame, "ovr_2k")
     corr_true = _corr_line(frame, "true_ovr")
     return f"""# True Analytics OVR vs {GAME_VERSION}
@@ -92,7 +98,7 @@ Season: **{SEASON}** regular season. Qualified players: GP ≥ 15 and MPG ≥ 10
 - **True OVR** — heuristic overall from PER, TS%, BPM/VORP, usage×efficiency, and defensive rates.
 - **OVR gap** = 2K − True. Positive ⇒ 2K is higher (overrated *relative to this model*). Negative ⇒ hidden gem.
 
-This is a v1 model. The weights are in `src/nba_ovr/settings.py` — change them and re-run stages 4–5.
+This is a {model_name} model variant. The base weights are in `src/nba_ovr/settings.py` — change them and re-run stages 4–5.
 
 ## Scoring bias check
 
@@ -134,7 +140,16 @@ def run_insights() -> None:
     underrated.to_csv(REPORTS_DIR / "top_underrated.csv", index=False)
     _scatter(frame, REPORTS_DIR / "ppg_vs_ovr.png")
 
-    markdown = _markdown(frame, overrated, underrated)
+    model_name = "v1"
+    summary_path = REPORTS_DIR / "ovr_model_summary.json"
+    if summary_path.exists():
+        try:
+            summary = pd.read_json(summary_path)
+            model_name = str(summary.get("model_name", "v1"))
+        except Exception:
+            model_name = "v1"
+
+    markdown = _markdown(frame, overrated, underrated, model_name=model_name)
     (REPORTS_DIR / "FINDINGS.md").write_text(markdown, encoding="utf-8")
     frame.sort_values("true_ovr", ascending=False).head(25)[
         [c for c in ["player_name", "pts", "per", "ovr_2k", "true_ovr", "ovr_gap"] if c in frame.columns]

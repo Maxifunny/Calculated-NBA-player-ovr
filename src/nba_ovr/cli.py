@@ -21,6 +21,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=["ingest", "spark", "sql", "ovr", "insights", "all"],
         help="Which stage to run. `all` runs 1→5 in order.",
     )
+    parser.add_argument(
+        "--model",
+        choices=["v1", "v2", "v3", "all"],
+        default="v1",
+        help="Stage 4 only: which True OVR variant(s) to compute/compare.",
+    )
     parser.add_argument("--skip-pbp", action="store_true", help="Stage 1: do not call stats.nba.com play-by-play")
     parser.add_argument(
         "--pbp-provider",
@@ -69,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage in ("sql", "all"):
         load_warehouse()
     if args.stage in ("ovr", "all"):
-        run_ovr()
+        # Stage 4 supports multiple variants; stage 1-3 and stage 5 remain shared artifacts.
+        run_ovr(model=args.model)
     if args.stage in ("insights", "all"):
         run_insights()
     return 0
